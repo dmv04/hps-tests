@@ -2,7 +2,7 @@ package com.user.service;
 
 import com.user.service.dao.UserDAO;
 import com.user.service.entities.User;
-import com.user.service.util.SessionFactoryProvider;
+import com.user.service.service.SessionFactoryProvider;
 
 import java.util.Scanner;
 
