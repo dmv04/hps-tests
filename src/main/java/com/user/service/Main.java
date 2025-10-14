@@ -2,13 +2,15 @@ package com.user.service;
 
 import com.user.service.dao.UserDAO;
 import com.user.service.entities.User;
-import com.user.service.service.SessionFactoryProvider;
+import com.user.service.service.UserService;
+import com.user.service.util.SessionFactoryProvider;
 
 import java.util.Scanner;
 
 public class Main {
-    private static final UserDAO userDao = new UserDAO();
     private static final Scanner scanner = new Scanner(System.in);
+    private static final UserDAO userDAO = new UserDAO();
+    private static final UserService userService = new UserService(userDAO);
 
     public static void main(String[] args) {
         try {
@@ -57,8 +59,7 @@ public class Main {
             System.out.print("Enter age: ");
             Integer age = getIntInput();
 
-            User user = new User(name, email, age);
-            userDao.save(user);
+            User user = userService.createUser(name, email, age);
             System.out.println("User created: " + user);
         } catch (Exception e) {
             System.err.println("Failed to create user: " + e.getMessage());
@@ -67,7 +68,7 @@ public class Main {
 
     private static void readAllUsers() {
         try {
-            var users = userDao.findAll();
+            var users = userService.getAllUsers();
             if (users.isEmpty()) {
                 System.out.println("No users found.");
             } else {
@@ -83,7 +84,7 @@ public class Main {
         try {
             System.out.print("Enter user ID: ");
             Long id = getLongInput();
-            var userOpt = userDao.findById(id);
+            var userOpt = userService.getUserById(id);
             if (userOpt.isPresent()) {
                 System.out.println("Found: " + userOpt.get());
             } else {
@@ -98,33 +99,24 @@ public class Main {
         try {
             System.out.print("Enter user ID to update: ");
             Long id = getLongInput();
-            var userOpt = userDao.findById(id);
-            if (userOpt.isEmpty()) {
-                System.out.println("User not found.");
-                return;
-            }
 
-            User user = userOpt.get();
-            System.out.print("Enter new name (current: " + user.getName() + "): ");
+            System.out.print("Enter new name (leave empty to skip): ");
             String name = scanner.nextLine().trim();
-            if (!name.isEmpty()) user.setName(name);
+            if (name.isEmpty()) name = null;
 
-            System.out.print("Enter new email (current: " + user.getEmail() + "): ");
+            System.out.print("Enter new email (leave empty to skip): ");
             String email = scanner.nextLine().trim();
-            if (!email.isEmpty()) user.setEmail(email);
+            if (email.isEmpty()) email = null;
 
-            System.out.print("Enter new age (current: " + user.getAge() + "): ");
+            System.out.print("Enter new age (leave empty to skip): ");
             String ageStr = scanner.nextLine().trim();
+            Integer age = null;
             if (!ageStr.isEmpty()) {
-                try {
-                    user.setAge(Integer.parseInt(ageStr));
-                } catch (NumberFormatException e) {
-                    System.out.println("Invalid age. Skipping age update.");
-                }
+                age = Integer.parseInt(ageStr);
             }
 
-            userDao.update(user);
-            System.out.println("User updated: " + user);
+            User updated = userService.updateUser(id, name, email, age);
+            System.out.println("User updated: " + updated);
         } catch (Exception e) {
             System.err.println("Failed to update user: " + e.getMessage());
         }
@@ -134,7 +126,7 @@ public class Main {
         try {
             System.out.print("Enter user ID to delete: ");
             Long id = getLongInput();
-            userDao.deleteById(id);
+            userService.deleteUser(id);
             System.out.println("User with ID " + id + " deleted (if existed).");
         } catch (Exception e) {
             System.err.println("Failed to delete user: " + e.getMessage());
