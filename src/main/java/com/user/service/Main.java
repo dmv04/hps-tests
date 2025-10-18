@@ -12,6 +12,7 @@ public class Main {
     private static final UserDAO userDAO = new UserDAO();
     private static final UserService userService = new UserService(userDAO);
 
+
     public static void main(String[] args) {
         try {
             System.out.println("User Service (Hibernate + PostgreSQL)");

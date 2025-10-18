@@ -3,6 +3,7 @@ package com.user.service.dao;
 import com.user.service.entities.User;
 import com.user.service.util.SessionFactoryProvider;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -12,10 +13,26 @@ import java.util.Optional;
 
 public class UserDAO {
     private static final Logger logger = LogManager.getLogger(UserDAO.class);
+    private final SessionFactory sessionFactory;
+
+    public UserDAO() {
+        this.sessionFactory = SessionFactoryProvider.getInstance();
+    }
+
+    public UserDAO(SessionFactory sessionFactory) {
+        if (sessionFactory == null) {
+            throw new IllegalArgumentException("SessionFactory cannot be null");
+        }
+        this.sessionFactory = sessionFactory;
+    }
+
+    private Session openSession() {
+        return sessionFactory.openSession();
+    }
 
     public void save(User user) {
         Transaction transaction = null;
-        try (Session session = SessionFactoryProvider.getInstance().openSession()) {
+        try (Session session = openSession()) {
             transaction = session.beginTransaction();
             session.persist(user);
             transaction.commit();
@@ -30,7 +47,7 @@ public class UserDAO {
     }
 
     public Optional<User> findById(Long id) {
-        try (Session session = SessionFactoryProvider.getInstance().openSession()) {
+        try (Session session = openSession()) {
             User user = session.get(User.class, id);
             logger.info("User found by ID {}: {}", id, user);
             return Optional.ofNullable(user);
@@ -41,7 +58,7 @@ public class UserDAO {
     }
 
     public List<User> findAll() {
-        try (Session session = SessionFactoryProvider.getInstance().openSession()) {
+        try (Session session = openSession()) {
             List<User> users = session.createQuery("FROM User", User.class).list();
             logger.info("Retrieved {} users", users.size());
             return users;
@@ -53,7 +70,7 @@ public class UserDAO {
 
     public void update(User user) {
         Transaction transaction = null;
-        try (Session session = SessionFactoryProvider.getInstance().openSession()) {
+        try (Session session = openSession()) {
             transaction = session.beginTransaction();
             session.merge(user);
             transaction.commit();
@@ -69,7 +86,7 @@ public class UserDAO {
 
     public void deleteById(Long id) {
         Transaction transaction = null;
-        try (Session session = SessionFactoryProvider.getInstance().openSession()) {
+        try (Session session = openSession()) {
             transaction = session.beginTransaction();
             User user = session.get(User.class, id);
             if (user != null) {
