@@ -91,14 +91,18 @@ public class UserDAO {
             User user = session.get(User.class, id);
             if (user != null) {
                 session.remove(user);
-                transaction.commit();
                 logger.info("User deleted: {}", user);
             } else {
                 logger.warn("Attempt to delete non-existent user with ID: {}", id);
             }
+            transaction.commit();
         } catch (Exception e) {
             if (transaction != null) {
-                transaction.rollback();
+                try {
+                    transaction.rollback();
+                } catch (Exception rollbackEx) {
+                    logger.warn("Failed to rollback transaction", rollbackEx);
+                }
             }
             logger.error("Error deleting user with ID: {}", id, e);
             throw new RuntimeException("Failed to delete user", e);

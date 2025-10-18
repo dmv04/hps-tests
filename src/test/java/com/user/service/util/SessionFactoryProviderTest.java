@@ -1,0 +1,72 @@
+package com.user.service.util;
+
+import com.user.service.entities.User;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@Testcontainers
+class SessionFactoryProviderTest {
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
+            .withDatabaseName("testdb")
+            .withUsername("test")
+            .withPassword("test");
+
+    private static SessionFactory sessionFactory;
+
+    @BeforeAll
+    static void setUp() {
+        System.setProperty("hibernate.connection.url", postgres.getJdbcUrl());
+        System.setProperty("hibernate.connection.username", postgres.getUsername());
+        System.setProperty("hibernate.connection.password", postgres.getPassword());
+
+        sessionFactory = SessionFactoryProvider.getInstance();
+    }
+
+    @AfterAll
+    static void tearDown() {
+        if (sessionFactory != null && !sessionFactory.isClosed()) {
+            sessionFactory.close();
+        }
+        System.clearProperty("hibernate.connection.url");
+        System.clearProperty("hibernate.connection.username");
+        System.clearProperty("hibernate.connection.password");
+    }
+
+    @Test
+    void shouldCreateValidSessionFactory() {
+        assertThat(sessionFactory).isNotNull();
+        assertThat(sessionFactory.isClosed()).isFalse();
+    }
+
+    @Test
+    void shouldPersistAndRetrieveEntity() {
+        try (Session session = sessionFactory.openSession()) {
+            var tx = session.beginTransaction();
+
+            User user = new User("IT Test", "it@test.com", 42);
+            session.persist(user);
+            tx.commit();
+
+            assertThat(user.getId()).isNotNull();
+
+            User found = session.get(User.class, user.getId());
+            assertThat(found).isNotNull();
+            assertThat(found.getName()).isEqualTo("IT Test");
+        }
+    }
+
+    @Test
+    void shouldInitializeSessionFactory() {
+        SessionFactory sf = SessionFactoryProvider.getInstance();
+        assertThat(sf).isNotNull();
+    }
+}

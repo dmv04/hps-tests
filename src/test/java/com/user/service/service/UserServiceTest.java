@@ -10,7 +10,10 @@ import org.mockito.MockitoAnnotations;
 
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -103,5 +106,161 @@ class UserServiceTest {
 
         assertTrue(result.isPresent());
         assertEquals("Test", result.get().getName());
+    }
+
+    @Test
+    void createUser_shouldThrowWhenDAOFails() {
+        doThrow(new RuntimeException("DB error"))
+                .when(userDAO).save(any(User.class));
+
+        assertThrows(RuntimeException.class, () -> userService.createUser("Alice", "a@a.com", 20));
+    }
+
+    @Test
+    void updateUser_shouldThrowIfAgeNegative() {
+        doThrow(new RuntimeException("Age cannot be negative"))
+                .when(userDAO).save(any(User.class));
+
+        assertThrows(RuntimeException.class, () -> userService.updateUser(1L, "Alice", "a@a.com", -1));
+    }
+
+    @Test
+    void createUser_shouldThrowWhenNameIsNull() {
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.createUser(null, "test@test.com", 25)
+        );
+        assertEquals("Name is required", ex.getMessage());
+    }
+
+    @Test
+    void createUser_shouldThrowWhenNameIsEmpty() {
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.createUser("", "test@test.com", 25)
+        );
+        assertEquals("Name is required", ex.getMessage());
+    }
+
+    @Test
+    void createUser_shouldThrowWhenNameIsBlank() {
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.createUser("   ", "test@test.com", 25)
+        );
+        assertEquals("Name is required", ex.getMessage());
+    }
+
+    @Test
+    void createUser_shouldThrowWhenEmailIsNull() {
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.createUser("John", null, 25)
+        );
+        assertEquals("Valid email is required", ex.getMessage());
+    }
+
+    @Test
+    void createUser_shouldThrowWhenEmailIsEmpty() {
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.createUser("John", "", 25)
+        );
+        assertEquals("Valid email is required", ex.getMessage());
+    }
+
+    @Test
+    void createUser_shouldThrowWhenEmailIsInvalid() {
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.createUser("John", "invalid-email", 25)
+        );
+        assertEquals("Valid email is required", ex.getMessage());
+    }
+
+    @Test
+    void createUser_shouldThrowWhenAgeIsNull() {
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.createUser("John", "john@test.com", null)
+        );
+        assertEquals("Age must be a non-negative number", ex.getMessage());
+    }
+
+    @Test
+    void createUser_shouldThrowWhenAgeIsNegative() {
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.createUser("John", "john@test.com", -5)
+        );
+        assertEquals("Age must be a non-negative number", ex.getMessage());
+    }
+
+    @Test
+    void updateUser_shouldThrowWhenAgeIsNegative() {
+        Long id = 1L;
+        User existing = new User("Old", "old@test.com", 30);
+        existing.setId(id);
+        when(userDAO.findById(id)).thenReturn(Optional.of(existing));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.updateUser(id, "New", "new@test.com", -5),
+                "Age cannot be negative"
+        );
+
+        verify(userDAO, never()).update(any());
+    }
+
+    @Test
+    void updateUser_shouldUpdateNameWhenProvided() {
+        Long id = 1L;
+        User existing = new User("Old", "old@test.com", 30);
+        existing.setId(id);
+        when(userDAO.findById(id)).thenReturn(Optional.of(existing));
+
+        User updated = userService.updateUser(id, "Updated", null, null);
+
+        assertEquals("Updated", updated.getName());
+        verify(userDAO).update(updated);
+    }
+
+    @Test
+    void updateUser_shouldUpdateEmailWhenProvided() {
+        Long id = 1L;
+        User existing = new User("Old", "old@test.com", 30);
+        existing.setId(id);
+        when(userDAO.findById(id)).thenReturn(Optional.of(existing));
+
+        User updated = userService.updateUser(id, null, "updated@test.com", null);
+
+        assertEquals("updated@test.com", updated.getEmail());
+        verify(userDAO).update(updated);
+    }
+
+    @Test
+    void updateUser_shouldSkipNameWhenEmpty() {
+        Long id = 1L;
+        User existing = new User("Old", "old@test.com", 30);
+        existing.setId(id);
+        when(userDAO.findById(id)).thenReturn(Optional.of(existing));
+
+        User updated = userService.updateUser(id, "", null, null);
+
+        assertEquals("Old", updated.getName());
+        verify(userDAO).update(updated);
+    }
+
+    @Test
+    void updateUser_shouldSkipEmailWhenEmpty() {
+        Long id = 1L;
+        User existing = new User("Old", "old@test.com", 30);
+        existing.setId(id);
+        when(userDAO.findById(id)).thenReturn(Optional.of(existing));
+
+        User updated = userService.updateUser(id, null, "", null);
+
+        assertEquals("old@test.com", updated.getEmail());
+        verify(userDAO).update(updated);
     }
 }

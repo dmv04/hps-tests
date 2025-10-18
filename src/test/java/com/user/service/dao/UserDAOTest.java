@@ -1,109 +1,182 @@
 package com.user.service.dao;
 
 import com.user.service.entities.User;
-import com.user.service.util.SessionFactoryProviderForTest;
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.junit.jupiter.api.AfterEach;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.mockito.*;
+import org.hibernate.query.Query;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-@Testcontainers
 class UserDAOTest {
 
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-            .withDatabaseName("testdb")
-            .withUsername("test")
-            .withPassword("test");
-
-    private UserDAO userDAO;
+    @Mock
     private SessionFactory sessionFactory;
+    @Mock
+    private Session session;
+    @Mock
+    private Transaction transaction;
+
+    @InjectMocks
+    private UserDAO userDAO;
 
     @BeforeEach
     void setUp() {
-        sessionFactory = SessionFactoryProviderForTest.create(
-                postgres.getJdbcUrl(),
-                postgres.getUsername(),
-                postgres.getPassword()
-        );
-        userDAO = new UserDAO(sessionFactory);
-    }
-
-    @AfterEach
-    void tearDown() {
-        if (sessionFactory != null && !sessionFactory.isClosed()) {
-            sessionFactory.close();
-        }
+        MockitoAnnotations.openMocks(this);
+        when(sessionFactory.openSession()).thenReturn(session);
+        when(session.beginTransaction()).thenReturn(transaction);
     }
 
     @Test
-    void save_shouldPersistUser() {
-        User user = new User("Alice", "alice@example.com", 30);
+    void save_shouldPersistUserAndCommit() {
+        User user = new User("Alice", "alice@test.com", 30);
+
         userDAO.save(user);
 
-        assertNotNull(user.getId());
-        assertThat(user.getCreatedAt()).isBeforeOrEqualTo(LocalDateTime.now());
+        verify(session).persist(user);
+        verify(transaction).commit();
     }
 
     @Test
-    void findById_shouldReturnUser_whenExists() {
-        User user = new User("Bob", "bob@example.com", 25);
-        userDAO.save(user);
+    void save_shouldRollbackAndThrowOnException() {
+        User user = new User("Bob", "bob@test.com", 25);
+        doThrow(new RuntimeException("DB error")).when(session).persist(user);
 
-        var found = userDAO.findById(user.getId());
-        assertTrue(found.isPresent());
-        assertEquals("Bob", found.get().getName());
-        assertEquals("bob@example.com", found.get().getEmail());
+        assertThatThrownBy(() -> userDAO.save(user))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to save user");
+
+        verify(transaction).rollback();
+    }
+
+
+    @Test
+    void findById_shouldReturnUserWhenExists() {
+        User user = new User("Charlie", "charlie@test.com", 40);
+        user.setId(1L);
+        when(session.get(User.class, 1L)).thenReturn(user);
+
+        var result = userDAO.findById(1L);
+
+        assertThat(result).isPresent().containsSame(user);
     }
 
     @Test
-    void findById_shouldReturnEmpty_whenNotExists() {
-        var found = userDAO.findById(999L);
-        assertFalse(found.isPresent());
+    void findById_shouldReturnEmptyWhenNotFound() {
+        when(session.get(User.class, 999L)).thenReturn(null);
+
+        var result = userDAO.findById(999L);
+
+        assertThat(result).isEmpty();
     }
 
     @Test
-    void findAll_shouldReturnAllUsers() {
-        userDAO.save(new User("User1", "u1@test.com", 20));
-        userDAO.save(new User("User2", "u2@test.com", 22));
+    void findById_shouldThrowOnDatabaseError() {
+        when(session.get(User.class, 1L)).thenThrow(new RuntimeException("DB down"));
 
-        List<User> users = userDAO.findAll();
-        assertThat(users).hasSize(2);
+        assertThatThrownBy(() -> userDAO.findById(1L))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to find user by ID");
+    }
+
+
+    @Test
+    void findAll_shouldReturnUsers() {
+        User user1 = new User("User1", "u1@test.com", 20);
+        User user2 = new User("User2", "u2@test.com", 22);
+        List<User> users = List.of(user1, user2);
+
+        @SuppressWarnings("unchecked")
+        Query<User> query = mock(Query.class);
+        when(query.list()).thenReturn(users);
+
+        when(session.createQuery(eq("FROM User"), eq(User.class))).thenReturn(query);
+
+        List<User> result = userDAO.findAll();
+
+        assertThat(result).hasSize(2).containsExactlyInAnyOrder(user1, user2);
     }
 
     @Test
-    void update_shouldModifyExistingUser() {
-        User user = new User("Old", "old@test.com", 40);
-        userDAO.save(user);
+    void findAll_shouldThrowOnDatabaseError() {
+        @SuppressWarnings("unchecked")
+        Query<User> query = mock(Query.class);
+        when(query.list()).thenThrow(new RuntimeException("Database connection failed"));
 
-        user.setName("New Name");
-        user.setEmail("new@test.com");
-        user.setAge(45);
+        when(session.createQuery(eq("FROM User"), eq(User.class))).thenReturn(query);
+
+        assertThatThrownBy(() -> userDAO.findAll())
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to fetch users");
+    }
+
+
+    @Test
+    void update_shouldMergeUserAndCommit() {
+        User user = new User("Old", "old@test.com", 30);
+
         userDAO.update(user);
 
-        var updated = userDAO.findById(user.getId()).get();
-        assertEquals("New Name", updated.getName());
-        assertEquals("new@test.com", updated.getEmail());
-        assertEquals(45, updated.getAge());
+        verify(session).merge(user);
+        verify(transaction).commit();
     }
 
     @Test
-    void deleteById_shouldRemoveUser() {
+    void update_shouldRollbackAndThrowOnException() {
+        User user = new User("Fail", "fail@test.com", 50);
+        doThrow(new RuntimeException("Update error")).when(session).merge(user);
+
+        assertThatThrownBy(() -> userDAO.update(user))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to update user");
+
+        verify(transaction).rollback();
+    }
+
+
+    @Test
+    void deleteById_shouldRemoveUserAndCommit() {
         User user = new User("ToDelete", "del@test.com", 33);
-        userDAO.save(user);
+        user.setId(5L);
+        when(session.get(User.class, 5L)).thenReturn(user);
 
-        userDAO.deleteById(user.getId());
+        userDAO.deleteById(5L);
 
-        var found = userDAO.findById(user.getId());
-        assertFalse(found.isPresent());
+        verify(session).remove(user);
+        verify(transaction).commit();
+    }
+
+    @Test
+    void deleteById_shouldDoNothingWhenUserNotFound() {
+        when(session.get(User.class, 999L)).thenReturn(null);
+
+        userDAO.deleteById(999L);
+
+        verify(session, never()).remove(any());
+        verify(transaction).commit();
+    }
+
+    @Test
+    void deleteById_shouldRollbackAndThrowOnDatabaseError() {
+        when(session.get(User.class, 1L)).thenThrow(new RuntimeException("DB error"));
+
+        assertThatThrownBy(() -> userDAO.deleteById(1L))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to delete user");
+
+        verify(transaction).rollback();
     }
 }
