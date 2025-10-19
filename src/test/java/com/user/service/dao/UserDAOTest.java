@@ -215,4 +215,38 @@ class UserDAOTest {
 
         verify(transaction).rollback();
     }
+    @Test
+    void save_shouldHandleBeginTransactionFailure() {
+        when(session.beginTransaction()).thenThrow(new RuntimeException("Cannot begin transaction"));
+        User user = new User("Test", "test@test.com", 20);
+
+        assertThatThrownBy(() -> userDAO.save(user))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to save user");
+
+        verify(transaction, never()).rollback();
+    }
+
+    @Test
+    void update_shouldHandleBeginTransactionFailure() {
+        User user = new User("Test", "test@test.com", 20);
+        when(session.beginTransaction()).thenThrow(new RuntimeException("Cannot begin transaction"));
+
+        assertThatThrownBy(() -> userDAO.update(user))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to update user");
+
+        verify(transaction, never()).rollback();
+    }
+
+    @Test
+    void deleteById_shouldHandleBeginTransactionFailure() {
+        when(session.beginTransaction()).thenThrow(new RuntimeException("Cannot begin transaction"));
+
+        assertThatThrownBy(() -> userDAO.deleteById(1L))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to delete user");
+
+        verify(transaction, never()).rollback();
+    }
 }
