@@ -7,29 +7,40 @@ import org.apache.logging.log4j.Logger;
 
 public class SessionFactoryProvider {
     private static final Logger logger = LogManager.getLogger(SessionFactoryProvider.class);
+    private static SessionFactory instance;
 
-    private static final SessionFactory INSTANCE;
-
-    static {
-        try {
-            INSTANCE = new Configuration().configure().buildSessionFactory();
-            logger.info("SessionFactory initialized successfully");
-        } catch (Exception e) {
-            logger.error("Failed to initialize SessionFactory", e);
-            throw new ExceptionInInitializerError(e);
-        }
-    }
-
-    private SessionFactoryProvider() {
-    }
+    private SessionFactoryProvider() {}
 
     public static SessionFactory getInstance() {
-        return INSTANCE;
+        if (instance == null) {
+            synchronized (SessionFactoryProvider.class) {
+                if (instance == null) {
+                    try {
+                        Configuration config = new Configuration().configure();
+
+                        String url = System.getProperty("hibernate.connection.url");
+                        String username = System.getProperty("hibernate.connection.username");
+                        String password = System.getProperty("hibernate.connection.password");
+
+                        if (url != null) config.setProperty("hibernate.connection.url", url);
+                        if (username != null) config.setProperty("hibernate.connection.username", username);
+                        if (password != null) config.setProperty("hibernate.connection.password", password);
+
+                        instance = config.buildSessionFactory();
+                        logger.info("SessionFactory initialized successfully");
+                    } catch (Exception e) {
+                        logger.error("Failed to initialize SessionFactory", e);
+                        throw new RuntimeException("Failed to initialize SessionFactory", e);
+                    }
+                }
+            }
+        }
+        return instance;
     }
 
     public static void shutdown() {
-        if (INSTANCE != null && !INSTANCE.isClosed()) {
-            INSTANCE.close();
+        if (instance != null && !instance.isClosed()) {
+            instance.close();
             logger.info("SessionFactory closed");
         }
     }

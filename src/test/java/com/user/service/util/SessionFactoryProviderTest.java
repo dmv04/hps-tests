@@ -11,6 +11,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 @Testcontainers
 class SessionFactoryProviderTest {
@@ -68,5 +69,60 @@ class SessionFactoryProviderTest {
     void shouldInitializeSessionFactory() {
         SessionFactory sf = SessionFactoryProvider.getInstance();
         assertThat(sf).isNotNull();
+    }
+
+    @Test
+    void getInstance_shouldThrowWhenConfigInvalid() {
+        try {
+            var field = SessionFactoryProvider.class.getDeclaredField("instance");
+            field.setAccessible(true);
+            field.set(null, null);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        System.setProperty("hibernate.connection.url", "jdbc:postgresql://localhost:9999/bad-db");
+        System.setProperty("hibernate.connection.username", "bad-user");
+        System.setProperty("hibernate.connection.password", "bad-pass");
+
+        assertThatThrownBy(SessionFactoryProvider::getInstance)
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Failed to initialize SessionFactory");
+
+        System.clearProperty("hibernate.connection.url");
+        System.clearProperty("hibernate.connection.username");
+        System.clearProperty("hibernate.connection.password");
+    }
+
+    @Test
+    void shutdown_shouldCloseInstanceIfOpen() {
+        SessionFactory sf = SessionFactoryProvider.getInstance();
+        assertThat(sf).isNotNull();
+
+        SessionFactoryProvider.shutdown();
+
+        assertThat(sf.isClosed()).isTrue();
+    }
+
+    @Test
+    void shutdown_shouldDoNothingIfInstanceIsNull() {
+        try {
+            var field = SessionFactoryProvider.class.getDeclaredField("instance");
+            field.setAccessible(true);
+            field.set(null, null);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set instance to null", e);
+        }
+
+        SessionFactoryProvider.shutdown();
+
+        try {
+            var field = SessionFactoryProvider.class.getDeclaredField("instance");
+            field.setAccessible(true);
+            Object instance = field.get(null);
+            assertThat(instance).isNull();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to read instance after shutdown", e);
+        }
     }
 }

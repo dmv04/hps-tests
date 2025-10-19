@@ -6,14 +6,15 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.*;
 import org.hibernate.query.Query;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -103,7 +104,7 @@ class UserDAOTest {
         Query<User> query = mock(Query.class);
         when(query.list()).thenReturn(users);
 
-        when(session.createQuery(eq("FROM User"), eq(User.class))).thenReturn(query);
+        when(session.createQuery(("FROM User"), (User.class))).thenReturn(query);
 
         List<User> result = userDAO.findAll();
 
@@ -116,7 +117,7 @@ class UserDAOTest {
         Query<User> query = mock(Query.class);
         when(query.list()).thenThrow(new RuntimeException("Database connection failed"));
 
-        when(session.createQuery(eq("FROM User"), eq(User.class))).thenReturn(query);
+        when(session.createQuery(("FROM User"), (User.class))).thenReturn(query);
 
         assertThatThrownBy(() -> userDAO.findAll())
                 .isInstanceOf(RuntimeException.class)
@@ -174,6 +175,41 @@ class UserDAOTest {
         when(session.get(User.class, 1L)).thenThrow(new RuntimeException("DB error"));
 
         assertThatThrownBy(() -> userDAO.deleteById(1L))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to delete user");
+
+        verify(transaction).rollback();
+    }
+
+    @Test
+    void constructor_shouldThrowWhenSessionFactoryIsNull() {
+        assertThatThrownBy(() -> new UserDAO(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("SessionFactory cannot be null");
+    }
+
+    @Test
+    void deleteById_shouldRollbackWhenRemoveFails() {
+        User user = new User("ToDelete", "del@test.com", 33);
+        user.setId(5L);
+        when(session.get(User.class, 5L)).thenReturn(user);
+        doThrow(new RuntimeException("Remove failed")).when(session).remove(user);
+
+        assertThatThrownBy(() -> userDAO.deleteById(5L))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Failed to delete user");
+    }
+
+    @Test
+    void deleteById_shouldLogWarningWhenRollbackFails() {
+        User user = new User("ToDelete", "del@test.com", 33);
+        user.setId(5L);
+
+        when(session.get(User.class, 5L)).thenReturn(user);
+        doThrow(new RuntimeException("Remove failed")).when(session).remove(user);
+        doThrow(new RuntimeException("Rollback failed")).when(transaction).rollback();
+
+        assertThatThrownBy(() -> userDAO.deleteById(5L))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("Failed to delete user");
 
